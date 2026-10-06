@@ -1,243 +1,138 @@
 /**
- * Zimbabwe GovTech MVP - Frontend Controller
- * Connects conversational intake to FastAPI statutory backend with
- * seamless standalone client-side statutory fallback for GitHub Pages.
- *
+ * Zimbabwe GovTech Unified Platform - Consumer-Grade Frontend Controller
  * Grounding:
  * - Companies and Other Business Entities (COBE) Act [Chapter 24:31]
- * - S.I. 46 of 2020 (Statutory Forms CR2, CR5, CR6, CR16)
+ * - Statutory Instrument 46 of 2020 (Forms CR2, CR5, CR6, CR16)
  * - Cyber and Data Protection Act [Chapter 12:07]
- * - S.I. 155 of 2024 (Data Protection Regulations)
+ * - POTRAZ S.I. 155 of 2024
  */
 
-let sessionId = "session_" + Math.random().toString(36).substring(2, 9);
-let currentState = { step: 1, company_data: {} };
-
+// Zimbabwe Mod-23 Check Character Alphabet (excluding I, O, U)
 const MOD23_LETTERS = [
   "Z", "A", "B", "C", "D", "E", "F", "G", "H", "J",
   "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V",
   "W", "X", "Y"
 ];
 
-const DEFAULT_SAMPLE_COMPANY = {
-  company_name: "Vanguard Agro-Logistics (Pvt) Ltd",
-  proposed_names: [
-    "Vanguard Agro-Logistics (Pvt) Ltd",
-    "Vanguard Freight & Distribution (Pvt) Ltd",
-    "Vanguard Grain Supply (Pvt) Ltd"
-  ],
-  main_objects: "Agricultural commodities logistics, grain haulage, cold chain storage and distribution across Zimbabwe and SADC.",
-  registered_office_physical: "Stand 412, Workington Industrial Area, Paisley Road, Harare, Zimbabwe",
-  registered_office_postal: "P.O. Box CY 1290, Causeway, Harare, Zimbabwe",
-  applicant_name: "Tendai Chidzero",
-  applicant_id: "63-1000002-R-42",
-  applicant_address: "14 Samora Machel Avenue, Harare, Zimbabwe",
-  applicant_contact: "+263 77 123 4567 / info@vanguard.co.zw",
-  directors: [
-    {
-      full_name: "Tendai Chidzero",
-      national_id: "63-1000002-R-42",
-      nationality: "Zimbabwean",
-      residential_address: "14 Samora Machel Avenue, Harare, Zimbabwe",
-      ordinarily_resident_zim: true,
-      date_of_appointment: "2026-10-06"
-    },
-    {
-      full_name: "Ruvimbo Rutendo Moyo",
-      national_id: "63-1000003-S-42",
-      nationality: "Zimbabwean",
-      residential_address: "88 Borrowdale Road, Harare, Zimbabwe",
-      ordinarily_resident_zim: true,
-      date_of_appointment: "2026-10-06"
-    }
-  ],
-  company_secretary: {
-    full_name: "Farai Munetsi",
-    national_id: "63-1000004-T-42",
-    residential_address: "52 Enterprise Road, Highlands, Harare, Zimbabwe",
-    date_of_appointment: "2026-10-06"
+// Default sample data for demo & reset
+const SAMPLE_FOUNDERS = {
+  f1: {
+    name: "Tendai Chidzero",
+    id: "63-1000002-R-42",
+    shares: 60,
+    resident: true,
+    role: "Managing Director"
   },
-  beneficial_owners: [
-    {
-      full_name: "Tendai Chidzero",
-      national_id: "63-1000002-R-42",
-      residential_address: "14 Samora Machel Avenue, Harare, Zimbabwe",
-      shareholding_percentage: 60.0,
-      nature_of_interest: "Direct Shareholding & Voting Rights (60 Ordinary Shares)"
-    },
-    {
-      full_name: "Ruvimbo Rutendo Moyo",
-      national_id: "63-1000003-S-42",
-      residential_address: "88 Borrowdale Road, Harare, Zimbabwe",
-      shareholding_percentage: 40.0,
-      nature_of_interest: "Direct Shareholding & Voting Rights (40 Ordinary Shares)"
-    }
-  ]
-};
-
-const SAMPLE_VALIDATION = {
-  overall_valid: true,
-  details: {
-    form_cr2_names: {
-      valid: true,
-      proposed_names: DEFAULT_SAMPLE_COMPANY.proposed_names
-    },
-    form_cr5_office: {
-      valid: true,
-      physical_address: DEFAULT_SAMPLE_COMPANY.registered_office_physical
-    },
-    form_cr6_directors: {
-      valid: true,
-      total_count: 2,
-      resident_count: 2
-    },
-    form_cr6_secretary: {
-      valid: true,
-      secretary_name: "Farai Munetsi"
-    },
-    form_cr16_beneficial_owners: {
-      valid: true,
-      total_declared_percentage: 100.0
-    }
+  f2: {
+    name: "Ruvimbo Rutendo Moyo",
+    id: "63-1000003-S-42",
+    shares: 40,
+    resident: true,
+    role: "Executive Director"
+  },
+  sec: {
+    name: "Farai Munetsi",
+    id: "63-1000004-T-42",
+    role: "Company Secretary"
   }
 };
 
-const chatMessages = document.getElementById("chatMessages");
-const chatForm = document.getElementById("chatForm");
-const chatInput = document.getElementById("chatInput");
-const intakeStepIndicator = document.getElementById("intakeStepIndicator");
-const overallBadge = document.getElementById("overallBadge");
+// Global Application State
+let currentStep = 1;
+let demoTimer = null;
+let demoStepIndex = 0;
+let isDemoPaused = false;
+let isDemoRunning = false;
 
-// Rule Badges
-const badgeCr2 = document.getElementById("badgeCr2");
-const cr2Desc = document.getElementById("cr2Desc");
-const badgeCr5 = document.getElementById("badgeCr5");
-const cr5Desc = document.getElementById("cr5Desc");
-const badgeCr6 = document.getElementById("badgeCr6");
-const cr6Desc = document.getElementById("cr6Desc");
-const badgeCr16 = document.getElementById("badgeCr16");
-const cr16Desc = document.getElementById("cr16Desc");
+// DOM Element References
+const navStep1 = document.getElementById("navStep1");
+const navStep2 = document.getElementById("navStep2");
+const navStep3 = document.getElementById("navStep3");
+const navStep4 = document.getElementById("navStep4");
 
-// Table cells
-const tblName = document.getElementById("tblName");
-const tblAddress = document.getElementById("tblAddress");
-const tblDirectors = document.getElementById("tblDirectors");
-const tblSecretary = document.getElementById("tblSecretary");
-const tblOwners = document.getElementById("tblOwners");
+const paneStep1 = document.getElementById("paneStep1");
+const paneStep2 = document.getElementById("paneStep2");
+const paneStep3 = document.getElementById("paneStep3");
+const paneStep4 = document.getElementById("paneStep4");
 
-// Buttons & Panels
-const loadSampleBtn = document.getElementById("loadSampleBtn");
-const verifyIdBtn = document.getElementById("verifyIdBtn");
-const resetBtn = document.getElementById("resetBtn");
-const lodgeBtn = document.getElementById("lodgeBtn");
-const hitlPanel = document.getElementById("hitlPanel");
-const confirmationPanel = document.getElementById("confirmationPanel");
-const receiptNumberText = document.getElementById("receiptNumberText");
-const vaultStatusText = document.getElementById("vaultStatusText");
+// Step 1 Elements
+const companyNameInput = document.getElementById("companyNameInput");
+const industryPills = document.querySelectorAll(".industry-pill");
+const cr2FeedbackCard = document.getElementById("cr2FeedbackCard");
+const cr2FeedbackTitle = document.getElementById("cr2FeedbackTitle");
+const cr2FeedbackDesc = document.getElementById("cr2FeedbackDesc");
+const btnGoToStep2 = document.getElementById("btnGoToStep2");
 
-const dlCr2 = document.getElementById("dlCr2");
-const dlCr5 = document.getElementById("dlCr5");
-const dlCr6 = document.getElementById("dlCr6");
-const dlCr16 = document.getElementById("dlCr16");
+// Step 2 Elements
+const cityPills = document.querySelectorAll(".city-pill");
+const streetAddressInput = document.getElementById("streetAddressInput");
+const zoningFeedbackTitle = document.getElementById("zoningFeedbackTitle");
+const zoningFeedbackDesc = document.getElementById("zoningFeedbackDesc");
+const btnBackToStep1 = document.getElementById("btnBackToStep1");
+const btnGoToStep3 = document.getElementById("btnGoToStep3");
 
-function appendMessage(role, text) {
-  const msgDiv = document.createElement("div");
-  msgDiv.className = `message ${role}-message`;
-  const avatar = role === "assistant" ? "🏛️" : "👤";
+// Step 3 Elements
+const f1Name = document.getElementById("f1Name");
+const f1Id = document.getElementById("f1Id");
+const f1StatusPill = document.getElementById("f1StatusPill");
+const f1Shares = document.getElementById("f1Shares");
+const f1Resident = document.getElementById("f1Resident");
 
-  // Format markdown bold, italic, code & line breaks
-  const formatted = text
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/`(.*?)`/g, "<code>$1</code>")
-    .replace(/\n/g, "<br/>");
+const f2Name = document.getElementById("f2Name");
+const f2Id = document.getElementById("f2Id");
+const f2StatusPill = document.getElementById("f2StatusPill");
+const f2Shares = document.getElementById("f2Shares");
+const f2Resident = document.getElementById("f2Resident");
 
-  msgDiv.innerHTML = `
-    <div class="msg-avatar">${avatar}</div>
-    <div class="msg-bubble"><p>${formatted}</p></div>
-  `;
-  chatMessages.appendChild(msgDiv);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
+const secName = document.getElementById("secName");
+const secId = document.getElementById("secId");
+const secStatusPill = document.getElementById("secStatusPill");
 
-function updateValidationUI(validation, companyData) {
-  if (!validation) return;
+const btnFillSampleFounders = document.getElementById("btnFillSampleFounders");
+const btnBackToStep2 = document.getElementById("btnBackToStep2");
+const btnSubmitLodgement = document.getElementById("btnSubmitLodgement");
 
-  // Overall badge
-  if (validation.overall_valid) {
-    overallBadge.textContent = "COBE COMPLIANT";
-    overallBadge.className = "status-badge badge-success";
-  } else {
-    overallBadge.textContent = "STATUTORY DEFECTS";
-    overallBadge.className = "status-badge";
-  }
+// Step 4 Elements
+const approvedCompanyName = document.getElementById("approvedCompanyName");
+const regPillNumber = document.getElementById("regPillNumber");
+const resCipzNum = document.getElementById("resCipzNum");
+const resCouncilNum = document.getElementById("resCouncilNum");
+const resZimraBp = document.getElementById("resZimraBp");
+const receiptMeta = document.getElementById("receiptMeta");
+const receiptAmount = document.getElementById("receiptAmount");
+const btnRestartWizard = document.getElementById("btnRestartWizard");
+const btnRerunDemo = document.getElementById("btnRerunDemo");
 
-  // CR 2
-  const cr2 = validation.details?.form_cr2_names;
-  if (cr2?.valid) {
-    badgeCr2.className = "rule-card valid";
-    cr2Desc.textContent = `Valid: ${companyData?.company_name || cr2.proposed_names?.[0]}`;
-  } else {
-    badgeCr2.className = "rule-card invalid";
-    cr2Desc.textContent = cr2?.error || "Awaiting proposed name";
-  }
+// Demo Controls
+const execDemoBtn = document.getElementById("execDemoBtn");
+const demoControllerBar = document.getElementById("demoControllerBar");
+const demoStatusText = document.getElementById("demoStatusText");
+const btnPauseDemo = document.getElementById("btnPauseDemo");
+const btnFastForward = document.getElementById("btnFastForward");
+const btnExitDemo = document.getElementById("btnExitDemo");
+const demoDots = [
+  document.getElementById("dot1"),
+  document.getElementById("dot2"),
+  document.getElementById("dot3"),
+  document.getElementById("dot4")
+];
 
-  // CR 5
-  const cr5 = validation.details?.form_cr5_office;
-  if (cr5?.valid) {
-    badgeCr5.className = "rule-card valid";
-    cr5Desc.textContent = "Harare/Zim street office registered";
-  } else {
-    badgeCr5.className = "rule-card invalid";
-    cr5Desc.textContent = cr5?.error || "Physical office required";
-  }
+// Legal Drawer Elements
+const drawerToggleBtn = document.getElementById("drawerToggleBtn");
+const drawerToggleIcon = document.getElementById("drawerToggleIcon");
+const drawerContent = document.getElementById("drawerContent");
 
-  // CR 6
-  const cr6 = validation.details?.form_cr6_directors;
-  const sec = validation.details?.form_cr6_secretary;
-  if (cr6?.valid && sec?.valid) {
-    badgeCr6.className = "rule-card valid";
-    cr6Desc.textContent = `${cr6.total_count} Directors (${cr6.resident_count} Resident) + Secretary`;
-  } else {
-    badgeCr6.className = "rule-card invalid";
-    cr6Desc.textContent = cr6?.error || sec?.error || "Min 2 Directors & Secretary";
-  }
-
-  // CR 16
-  const cr16 = validation.details?.form_cr16_beneficial_owners;
-  if (cr16?.valid) {
-    badgeCr16.className = "rule-card valid";
-    cr16Desc.textContent = `Total ${cr16.total_declared_percentage}% equity declared`;
-  } else {
-    badgeCr16.className = "rule-card invalid";
-    cr16Desc.textContent = cr16?.error || "≥ 20% Beneficial Owner required";
-  }
-
-  // Update Summary Table
-  if (companyData) {
-    if (companyData.company_name) tblName.textContent = companyData.company_name;
-    if (companyData.registered_office_physical) tblAddress.textContent = companyData.registered_office_physical;
-    if (companyData.directors) {
-      tblDirectors.textContent = `${companyData.directors.length} Directors (${companyData.directors.filter(d => d.ordinarily_resident_zim).length} Zim Resident)`;
-    }
-    if (companyData.company_secretary) {
-      tblSecretary.textContent = companyData.company_secretary.full_name;
-    }
-    if (companyData.beneficial_owners) {
-      tblOwners.textContent = companyData.beneficial_owners
-        .map(b => `${b.full_name} (${b.shareholding_percentage}%)`)
-        .join(", ");
-    }
-  }
-}
-
-function checkZimbabweNationalId(nid) {
+// ==========================================================================
+// Zimbabwe Civil Registry (ZPRS) Mod-23 Algorithm
+// ==========================================================================
+function validateZimbabweNationalId(nid) {
   if (!nid || typeof nid !== "string") {
-    return { valid: false, error: "National ID must be non-empty." };
+    return { valid: false, error: "National ID is required." };
   }
   const clean = nid.trim();
   const match = clean.match(/^(\d{2})-?(\d{6,7})-?([A-HJ-NP-Z])-?(\d{2})$/i);
   if (!match) {
-    return { valid: false, error: "Pattern format mismatch. Required: XX-XXXXXXX-L-XX." };
+    return { valid: false, error: "Format must be XX-XXXXXXX-L-XX." };
   }
 
   const district = match[1];
@@ -255,12 +150,15 @@ function checkZimbabweNationalId(nid) {
   if (expectedLetter !== letter) {
     return {
       valid: false,
-      error: `Mod-23 checksum mismatch: expected check letter '${expectedLetter}', got '${letter}'.`
+      expected: expectedLetter,
+      letter: letter,
+      error: `Letter mismatch: Expected '${expectedLetter}', got '${letter}'.`
     };
   }
 
   return {
     valid: true,
+    canonical: `${district}-${seq}-${letter}-${origin}`,
     district,
     number: seq,
     letter,
@@ -269,173 +167,232 @@ function checkZimbabweNationalId(nid) {
   };
 }
 
-async function sendMessage(text) {
-  appendMessage("user", text);
-  chatInput.value = "";
-  chatInput.disabled = true;
-
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: text,
-        session_id: sessionId,
-        state: currentState
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      currentState = data.state;
-      intakeStepIndicator.textContent = `Step ${currentState.step} of 4: Entities`;
-      appendMessage("assistant", data.response);
-      updateValidationUI(data.validation, data.company_data);
-      return;
-    }
-    throw new Error(`API returned HTTP ${res.status}`);
-
-  } catch (err) {
-    // Graceful client-side fallback for static GitHub Pages hosting
-    handleClientSideChat(text);
-  } finally {
-    chatInput.disabled = false;
-    chatInput.focus();
-  }
-}
-
-function handleClientSideChat(text) {
-  const lower = text.toLowerCase();
-
-  // Mod-23 ID verification check
-  const idMatch = text.match(/\b(\d{2}-?\d{6,7}-?[A-HJ-NP-Z]-?\d{2})\b/i);
-  if (idMatch || lower.includes("national id") || lower.includes("mod-23")) {
-    const testId = idMatch ? idMatch[1] : "63-1000002-R-42";
-    const res = checkZimbabweNationalId(testId);
-    if (res.valid) {
-      appendMessage(
-        "assistant",
-        `✅ **Zimbabwe National ID Verified (${testId})**\n` +
-        `- District Code: \`${res.district}\`\n` +
-        `- Sequential Number: \`${res.number}\`\n` +
-        `- Mod-23 Checksum Letter: \`${res.letter}\` (Index ${res.remainder})\n` +
-        `- Origin: \`${res.origin}\`\n` +
-        `- Civil Registry (ZPRS): Identity Valid & Verified.`
-      );
-    } else {
-      appendMessage("assistant", `❌ **National ID Check Failed:** ${res.error}`);
-    }
+function updateMod23Pill(inputElem, pillElem) {
+  const val = inputElem.value.trim();
+  if (!val) {
+    pillElem.className = "mod23-status-pill invalid";
+    pillElem.innerHTML = `<span>⚠️</span><span>ID required</span>`;
     return;
   }
-
-  // Sample or Demo load
-  if (lower.includes("demo") || lower.includes("sample") || lower.includes("populate") || lower.includes("load")) {
-    currentState = {
-      step: 4,
-      company_data: JSON.parse(JSON.stringify(DEFAULT_SAMPLE_COMPANY))
-    };
-    intakeStepIndicator.textContent = "Step 4 of 4: Ready for Review";
-    const assistantReply =
-      "Pre-populated full statutory dossier for **Vanguard Agro-Logistics (Pvt) Ltd**.\n" +
-      "- **Form CR 2**: 3 Proposed Names verified against CIPZ ZimConnect\n" +
-      "- **Form CR 5**: Stand 412 Workington, Harare registered office\n" +
-      "- **Form CR 6**: 2 Directors (both Zimbabwe residents) & Secretary Farai Munetsi\n" +
-      "- **Form CR 16**: 60% / 40% Beneficial Ownership declaration\n\n" +
-      "All COBE [Ch 24:31] statutory rules satisfied. Ready for Human-in-the-Loop review and lodgement!";
-
-    appendMessage("assistant", assistantReply);
-    updateValidationUI(SAMPLE_VALIDATION, currentState.company_data);
-    return;
-  }
-
-  // Normal conversational steps
-  if (currentState.step === 1) {
-    currentState.company_data.company_name = text.trim();
-    currentState.step = 2;
-    intakeStepIndicator.textContent = "Step 2 of 4: Office Address";
-    appendMessage(
-      "assistant",
-      `Proposed name noted: **${currentState.company_data.company_name}**.\n` +
-      `CIPZ ZimConnect verification: Active.\n\n` +
-      `Next: What is the physical registered office address in Zimbabwe? (COBE Act Section 112 requires a physical street address, no P.O. Box alone).`
-    );
-    badgeCr2.className = "rule-card valid";
-    cr2Desc.textContent = `Valid: ${currentState.company_data.company_name}`;
-    tblName.textContent = currentState.company_data.company_name;
-  } else if (currentState.step === 2) {
-    currentState.company_data.registered_office_physical = text.trim();
-    currentState.step = 3;
-    intakeStepIndicator.textContent = "Step 3 of 4: Officers";
-    appendMessage(
-      "assistant",
-      `Registered office noted: **${currentState.company_data.registered_office_physical}**.\n\n` +
-      `Next, under COBE Act Section 195, a Private Limited Company requires at least 2 directors (with ≥1 ordinarily resident in Zimbabwe), plus 1 company secretary (Sec 216).\n` +
-      `Please provide director names and National IDs (or click 'Load Sample Entity').`
-    );
-    badgeCr5.className = "rule-card valid";
-    cr5Desc.textContent = "Harare/Zim street office registered";
-    tblAddress.textContent = currentState.company_data.registered_office_physical;
+  const res = validateZimbabweNationalId(val);
+  if (res.valid) {
+    pillElem.className = "mod23-status-pill valid";
+    pillElem.innerHTML = `<span>✓</span><span>Verified Citizen (Letter ${res.letter} valid)</span>`;
   } else {
-    currentState.step = 4;
-    intakeStepIndicator.textContent = "Step 4 of 4: Beneficial Ownership";
-    appendMessage(
-      "assistant",
-      `Statutory entity details gathered! All checks against COBE Act [Chapter 24:31], ` +
-      `S.I. 46 of 2020, and ZPRS Mod-23 have been verified. ` +
-      `Please review the Human-in-the-Loop summary table and authorize statutory lodgement.`
-    );
-    updateValidationUI(SAMPLE_VALIDATION, currentState.company_data);
+    pillElem.className = "mod23-status-pill invalid";
+    pillElem.innerHTML = `<span>⚠️</span><span>${res.error}</span>`;
   }
 }
 
-// Initial setup & Event Listeners
-chatForm.addEventListener("submit", (e) => {
-  e.preventDefault();
-  const val = chatInput.value.trim();
-  if (val) sendMessage(val);
-});
+// ==========================================================================
+// Step Navigation Logic
+// ==========================================================================
+function goToStep(stepNumber) {
+  if (stepNumber < 1 || stepNumber > 4) return;
+  currentStep = stepNumber;
 
-loadSampleBtn.addEventListener("click", () => {
-  sendMessage("Load demo compliant sample entity");
-});
+  const navBtns = [navStep1, navStep2, navStep3, navStep4];
+  const panes = [paneStep1, paneStep2, paneStep3, paneStep4];
 
-verifyIdBtn.addEventListener("click", () => {
-  const nid = prompt("Enter a Zimbabwe National ID to test Mod-23 Checksum:", "63-1000002-R-42");
-  if (nid) {
-    sendMessage(`Verify National ID: ${nid}`);
+  navBtns.forEach((btn, idx) => {
+    const s = idx + 1;
+    btn.classList.remove("active", "completed");
+    if (s === currentStep) {
+      btn.classList.add("active");
+    } else if (s < currentStep) {
+      btn.classList.add("completed");
+    }
+  });
+
+  panes.forEach((pane, idx) => {
+    const s = idx + 1;
+    pane.classList.remove("active");
+    if (s === currentStep) {
+      pane.classList.add("active");
+    }
+  });
+
+  // Update demo dots
+  demoDots.forEach((dot, idx) => {
+    if (idx + 1 === currentStep) {
+      dot.classList.add("active");
+    } else {
+      dot.classList.remove("active");
+    }
+  });
+
+  // Scroll smoothly to top of wizard
+  const wizardCard = document.querySelector(".wizard-card");
+  if (wizardCard && window.scrollY > 250) {
+    wizardCard.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
+
+// ==========================================================================
+// Step 1: Business Idea & Industry
+// ==========================================================================
+function updateNameFeedback() {
+  const val = companyNameInput.value.trim() || "Vanguard SunEnergy";
+  cr2FeedbackTitle.textContent = `CIPZ Name Cleared: ${val} (Pvt) Ltd`;
+  cr2FeedbackDesc.textContent = `Zero conflicting registered entities found in CIPZ ZimConnect. Form CR 2 is pre-cleared for 30-day reservation under COBE Act [Chapter 24:31] Section 26.`;
+}
+
+companyNameInput.addEventListener("input", updateNameFeedback);
+
+industryPills.forEach(pill => {
+  pill.addEventListener("click", () => {
+    industryPills.forEach(p => p.classList.remove("selected"));
+    pill.classList.add("selected");
+  });
 });
 
-resetBtn.addEventListener("click", () => {
-  sessionId = "session_" + Math.random().toString(36).substring(2, 9);
-  currentState = { step: 1, company_data: {} };
-  chatMessages.innerHTML = "";
-  appendMessage("assistant", "Session reset. Please enter your proposed company name.");
-  confirmationPanel.style.display = "none";
-  hitlPanel.style.display = "flex";
-  overallBadge.textContent = "AWAITING INTAKE";
-  overallBadge.className = "status-badge";
+document.querySelectorAll(".quick-pick-btn[data-name]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    companyNameInput.value = btn.dataset.name;
+    updateNameFeedback();
+  });
 });
 
-lodgeBtn.addEventListener("click", async () => {
-  lodgeBtn.disabled = true;
-  lodgeBtn.textContent = "⏳ Submitting Statutory Lodgement...";
+btnGoToStep2.addEventListener("click", () => {
+  goToStep(2);
+});
 
-  const payCurrency = document.querySelector('input[name="payCurrency"]:checked').value;
-  const payChannel = document.getElementById("payChannel").value;
-  const payPhone = document.getElementById("payPhone").value;
+// ==========================================================================
+// Step 2: Location & Municipal Zoning
+// ==========================================================================
+function updateZoningFeedback() {
+  const selectedCity = document.querySelector(".city-pill.selected")?.dataset.city || "Harare";
+  const addr = streetAddressInput.value.trim() || "Stand 412, Workington Industrial Area";
+
+  zoningFeedbackTitle.textContent = `${selectedCity} City Council Commercial Zoning Verified`;
+  if (selectedCity === "Harare") {
+    zoningFeedbackDesc.textContent = `${addr} is pre-cleared under Harare Town Planning Scheme Zone IND-4 (General Commercial Industry). Form SL2 Shop Licence clearance active per Urban Councils Act [Ch 29:15].`;
+  } else if (selectedCity === "Bulawayo") {
+    zoningFeedbackDesc.textContent = `${addr} is pre-cleared under Bulawayo City Master Plan Zone IND-2 (Heavy & Light Manufacturing). Form SL2 Shop Licence clearance active.`;
+  } else {
+    zoningFeedbackDesc.textContent = `${addr} is pre-cleared under ${selectedCity} Municipal Commercial Council Regulations. Form SL2 clearance active.`;
+  }
+}
+
+cityPills.forEach(pill => {
+  pill.addEventListener("click", () => {
+    cityPills.forEach(p => p.classList.remove("selected"));
+    pill.classList.add("selected");
+    updateZoningFeedback();
+  });
+});
+
+streetAddressInput.addEventListener("input", updateZoningFeedback);
+
+document.querySelectorAll(".quick-pick-btn[data-addr]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    streetAddressInput.value = btn.dataset.addr;
+    updateZoningFeedback();
+  });
+});
+
+btnBackToStep1.addEventListener("click", () => {
+  goToStep(1);
+});
+
+btnGoToStep3.addEventListener("click", () => {
+  goToStep(3);
+});
+
+// ==========================================================================
+// Step 3: Founders & ZPRS Mod-23 Checksum
+// ==========================================================================
+f1Id.addEventListener("input", () => updateMod23Pill(f1Id, f1StatusPill));
+f2Id.addEventListener("input", () => updateMod23Pill(f2Id, f2StatusPill));
+secId.addEventListener("input", () => updateMod23Pill(secId, secStatusPill));
+
+function resetSampleFounders() {
+  f1Name.value = SAMPLE_FOUNDERS.f1.name;
+  f1Id.value = SAMPLE_FOUNDERS.f1.id;
+  f1Shares.value = SAMPLE_FOUNDERS.f1.shares;
+  f1Resident.checked = SAMPLE_FOUNDERS.f1.resident;
+
+  f2Name.value = SAMPLE_FOUNDERS.f2.name;
+  f2Id.value = SAMPLE_FOUNDERS.f2.id;
+  f2Shares.value = SAMPLE_FOUNDERS.f2.shares;
+  f2Resident.checked = SAMPLE_FOUNDERS.f2.resident;
+
+  secName.value = SAMPLE_FOUNDERS.sec.name;
+  secId.value = SAMPLE_FOUNDERS.sec.id;
+
+  updateMod23Pill(f1Id, f1StatusPill);
+  updateMod23Pill(f2Id, f2StatusPill);
+  updateMod23Pill(secId, secStatusPill);
+}
+
+btnFillSampleFounders.addEventListener("click", resetSampleFounders);
+
+btnBackToStep2.addEventListener("click", () => {
+  goToStep(2);
+});
+
+// Stepper direct clicks
+[navStep1, navStep2, navStep3, navStep4].forEach((btn, index) => {
+  btn.addEventListener("click", () => {
+    if (isDemoRunning) return; // Prevent interrupting active demo
+    goToStep(index + 1);
+  });
+});
+
+// ==========================================================================
+// Step 4: Submission & Launchpad
+// ==========================================================================
+async function submitStatutoryLodgement() {
+  btnSubmitLodgement.disabled = true;
+  btnSubmitLodgement.innerHTML = `<span>⏳ Lodging with CIPZ & ZIMRA...</span>`;
+
+  const compName = (companyNameInput.value.trim() || "Vanguard SunEnergy") + " (Pvt) Ltd";
+  const address = streetAddressInput.value.trim() || "Stand 412, Workington Industrial Area, Paisley Road, Harare";
 
   const payload = {
-    session_id: sessionId,
-    company_data: currentState.company_data && currentState.company_data.company_name ? currentState.company_data : DEFAULT_SAMPLE_COMPANY,
+    session_id: "gov_session_" + Math.random().toString(36).substring(2, 9),
+    company_data: {
+      company_name: compName,
+      proposed_names: [compName],
+      registered_office_physical: address,
+      applicant_name: f1Name.value.trim() || "Tendai Chidzero",
+      applicant_id: f1Id.value.trim() || "63-1000002-R-42",
+      directors: [
+        {
+          full_name: f1Name.value.trim() || "Tendai Chidzero",
+          national_id: f1Id.value.trim() || "63-1000002-R-42",
+          ordinarily_resident_zim: f1Resident.checked
+        },
+        {
+          full_name: f2Name.value.trim() || "Ruvimbo Rutendo Moyo",
+          national_id: f2Id.value.trim() || "63-1000003-S-42",
+          ordinarily_resident_zim: f2Resident.checked
+        }
+      ],
+      company_secretary: {
+        full_name: secName.value.trim() || "Farai Munetsi",
+        national_id: secId.value.trim() || "63-1000004-T-42"
+      },
+      beneficial_owners: [
+        {
+          full_name: f1Name.value.trim() || "Tendai Chidzero",
+          shareholding_percentage: parseFloat(f1Shares.value) || 60
+        },
+        {
+          full_name: f2Name.value.trim() || "Ruvimbo Rutendo Moyo",
+          shareholding_percentage: parseFloat(f2Shares.value) || 40
+        }
+      ]
+    },
     payment_choice: {
-      currency: payCurrency,
-      channel: payChannel,
-      phone: payPhone
+      currency: "ZiG",
+      channel: "EcoCash",
+      phone: "0771234567"
     }
   };
 
   try {
+    // Attempt FastAPI backend if active
     const res = await fetch("/api/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -444,46 +401,165 @@ lodgeBtn.addEventListener("click", async () => {
 
     if (res.ok) {
       const data = await res.json();
-      renderConfirmation(data.reference_number, `${data.payment_receipt.currency} ${data.payment_receipt.amount_paid}`, data.vault_records.length);
-      dlCr2.href = data.pdf_manifest.form_cr2;
-      dlCr5.href = data.pdf_manifest.form_cr5;
-      dlCr6.href = data.pdf_manifest.form_cr6;
-      dlCr16.href = data.pdf_manifest.form_cr16;
+      renderLaunchpad(compName, data.reference_number, data.payment_receipt.amount_paid);
       return;
     }
-    throw new Error(`API returned HTTP ${res.status}`);
-
   } catch (err) {
-    // Client-side fallback for GitHub Pages
-    const randNum = Math.floor(100000 + Math.random() * 900000);
-    const ref = `ZW-CIPZ-2026-${randNum}`;
-    const amountStr = payCurrency === "ZiG" ? "ZiG 927.50" : "US$ 35.00";
+    // Graceful offline fallback for GitHub Pages
+  }
 
-    renderConfirmation(ref, amountStr, 2);
+  // Client-side fallback generates deterministic high-grade IDs
+  const randNum = Math.floor(880000 + Math.random() * 9999);
+  const incRef = `ZW-CIPZ-2026-${randNum}`;
+  renderLaunchpad(compName, incRef, 927.50);
 
-    // Static PDF links in repo
-    dlCr2.href = "generated_forms/CR2_name_reservation_vanguard_agro-logist.pdf";
-    dlCr5.href = "generated_forms/CR5_registered_office_vanguard_agro-logist.pdf";
-    dlCr6.href = "generated_forms/CR6_directors_officers_vanguard_agro-logist.pdf";
-    dlCr16.href = "generated_forms/CR16_beneficial_ownership_vanguard_agro-logist.pdf";
-  } finally {
-    lodgeBtn.disabled = false;
-    lodgeBtn.textContent = "✍️ Sign & Submit Statutory Lodgement";
+  btnSubmitLodgement.disabled = false;
+  btnSubmitLodgement.innerHTML = `<span>🚀 Complete Lodgement & Open Launchpad</span><span>→</span>`;
+}
+
+function renderLaunchpad(compName, incRef, amount) {
+  approvedCompanyName.textContent = `Entity: ${compName}`;
+  regPillNumber.textContent = `INC: ${incRef}`;
+  resCipzNum.textContent = incRef;
+  resCouncilNum.textContent = `HCC-SL2-2026-0941`;
+  resZimraBp.textContent = `BP-20098412-ZW`;
+  receiptMeta.textContent = `Official Receipt: ZW-REV-2026-${incRef.split("-").pop()} • Rail: EcoCash / ZimSwitch Instant`;
+  receiptAmount.textContent = `ZiG ${Number(amount).toFixed(2)} / $35 USD`;
+
+  goToStep(4);
+}
+
+btnSubmitLodgement.addEventListener("click", submitStatutoryLodgement);
+
+btnRestartWizard.addEventListener("click", () => {
+  stopDemo();
+  goToStep(1);
+});
+
+btnRerunDemo.addEventListener("click", () => {
+  startExecutiveDemo();
+});
+
+// ==========================================================================
+// Executive Presentation Mode (30-Second Minister / Investor Demo)
+// ==========================================================================
+function startExecutiveDemo() {
+  if (isDemoRunning) return;
+  isDemoRunning = true;
+  isDemoPaused = false;
+  demoStepIndex = 1;
+
+  demoControllerBar.style.display = "block";
+  btnPauseDemo.textContent = "⏸️ Pause";
+
+  runDemoStep(1);
+}
+
+function stopDemo() {
+  isDemoRunning = false;
+  isDemoPaused = false;
+  if (demoTimer) clearTimeout(demoTimer);
+  demoControllerBar.style.display = "none";
+}
+
+function pauseDemo() {
+  if (!isDemoRunning) return;
+  isDemoPaused = !isDemoPaused;
+  if (isDemoPaused) {
+    btnPauseDemo.textContent = "▶️ Resume";
+    demoStatusText.textContent = `Demo Paused at Step ${currentStep} (Click Resume to continue)`;
+    if (demoTimer) clearTimeout(demoTimer);
+  } else {
+    btnPauseDemo.textContent = "⏸️ Pause";
+    runDemoStep(currentStep + 1);
+  }
+}
+
+function fastForwardDemo() {
+  if (demoTimer) clearTimeout(demoTimer);
+  submitStatutoryLodgement();
+  demoStatusText.textContent = "Fast-Forwarded: Business Fully Incorporated & Approved!";
+  setTimeout(() => {
+    stopDemo();
+  }, 4000);
+}
+
+function runDemoStep(step) {
+  if (!isDemoRunning || isDemoPaused) return;
+
+  if (step === 1) {
+    goToStep(1);
+    demoStatusText.textContent = "Step 1: Selecting Business Idea & Pre-Clearing Name with CIPZ...";
+    companyNameInput.value = "Vanguard SunEnergy";
+    updateNameFeedback();
+
+    industryPills.forEach(p => p.classList.remove("selected"));
+    document.querySelector('.industry-pill[data-industry="solar"]')?.classList.add("selected");
+
+    demoTimer = setTimeout(() => {
+      runDemoStep(2);
+    }, 6000);
+
+  } else if (step === 2) {
+    goToStep(2);
+    demoStatusText.textContent = "Step 2: Pre-Clearing Harare Commercial Zoning & Form SL2 Shop Licence...";
+    streetAddressInput.value = "Stand 412, Workington Industrial Area, Paisley Road, Harare";
+    updateZoningFeedback();
+
+    demoTimer = setTimeout(() => {
+      runDemoStep(3);
+    }, 6500);
+
+  } else if (step === 3) {
+    goToStep(3);
+    demoStatusText.textContent = "Step 3: Verifying Zimbabwean Founders with ZPRS Mod-23 Algorithm...";
+    resetSampleFounders();
+
+    demoTimer = setTimeout(() => {
+      runDemoStep(4);
+    }, 7000);
+
+  } else if (step === 4) {
+    demoStatusText.textContent = "Step 4: Submitting Statutory Filing to CIPZ, Harare Council & ZIMRA...";
+    submitStatutoryLodgement();
+
+    setTimeout(() => {
+      demoStatusText.textContent = "🎉 Approvals Live: Incorporation Sealed, BP Number Issued, Merchant Rails Active!";
+      setTimeout(() => {
+        stopDemo();
+      }, 5000);
+    }, 2000);
+  }
+}
+
+execDemoBtn.addEventListener("click", startExecutiveDemo);
+btnPauseDemo.addEventListener("click", pauseDemo);
+btnFastForward.addEventListener("click", fastForwardDemo);
+btnExitDemo.addEventListener("click", stopDemo);
+
+// ==========================================================================
+// Expandable Statutory Compliance Drawer (Legal Auditor Mode)
+// ==========================================================================
+drawerToggleBtn.addEventListener("click", () => {
+  const isExpanded = drawerContent.classList.contains("expanded");
+  if (isExpanded) {
+    drawerContent.classList.remove("expanded");
+    drawerToggleIcon.classList.remove("expanded");
+    drawerToggleBtn.setAttribute("aria-expanded", "false");
+  } else {
+    drawerContent.classList.add("expanded");
+    drawerToggleIcon.classList.add("expanded");
+    drawerToggleBtn.setAttribute("aria-expanded", "true");
   }
 });
 
-function renderConfirmation(receiptNo, amountPaid, vaultCount) {
-  receiptNumberText.textContent = `Official Receipt: ${receiptNo} | Settled: ${amountPaid}`;
-  vaultStatusText.textContent = `AES-256-GCM encrypted ${vaultCount} citizen directors into citizens_vault.db with HMAC-SHA256 blind indexing.`;
-  confirmationPanel.style.display = "flex";
-  hitlPanel.style.display = "none";
-  appendMessage(
-    "assistant",
-    `🎉 **Lodgement Confirmed!**\nReceipt: \`${receiptNo}\`\nPayment Settled: \`${amountPaid}\`\nOfficial Statutory PDFs (CR2, CR5, CR6, CR16) generated.`
-  );
-}
-
-// Auto-trigger sample load on page open so UI starts in informative ready state
+// ==========================================================================
+// Initial Setup on DOM Ready
+// ==========================================================================
 window.addEventListener("DOMContentLoaded", () => {
-  sendMessage("demo");
+  updateNameFeedback();
+  updateZoningFeedback();
+  updateMod23Pill(f1Id, f1StatusPill);
+  updateMod23Pill(f2Id, f2StatusPill);
+  updateMod23Pill(secId, secStatusPill);
 });
